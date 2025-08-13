@@ -1,0 +1,58 @@
+.price-chart {
+  background: #2a2a2a;
+  border-radius: 8px;
+  padding: 1rem;
+  height: 400px;
+}
+
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.metal-selector {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.metal-selector button {
+  padding: 0.5rem 1rem;
+  border: 1px solid #444;
+  background: #1a1a1a;
+  color: #ffffff;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.metal-selector button:hover {
+  background: #333;
+}
+
+.metal-selector button.active {
+  background: #4CAF50;
+  border-color: #4CAF50;
+}
+
+.current-price {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.price-label {
+  color: #888;
+  font-size: 0.9rem;
+}
+
+.price-value {
+  color: #4CAF50;
+  font-size: 1.5rem;
+  font-weight: bold;
+}
+
+.chart-container {
+  height: 320px;
+}

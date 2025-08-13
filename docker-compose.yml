@@ -1,0 +1,50 @@
+version: '3.8'
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: trading_simulator
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      timeout: 20s
+      retries: 10
+
+  backend:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=mysql+pymysql://root:password@mysql/trading_simulator
+      - SECRET_KEY=your-super-secret-key-change-this-in-production-please
+      - LBMA_XML_URL=https://www.lbma.org.uk/prices
+      - LBMA_CSV_URL=https://www.lbma.org.uk/downloads/gold-price.csv
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - .:/app
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - HOST=0.0.0.0
+      - WDS_SOCKET_HOST=localhost
+      - DISABLE_HOST_CHECK=true
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
