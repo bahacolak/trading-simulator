@@ -1,8 +1,6 @@
 import asyncio
 import random
-import xml.etree.ElementTree as ET
-import csv
-import io
+import json
 from datetime import datetime
 from typing import Dict, Optional
 import requests
@@ -15,12 +13,11 @@ logger = logging.getLogger(__name__)
 class PriceService:
     
     def __init__(self):
-        self.prices = {
-            "GOLD": 2000.0,
-            "SILVER": 25.0
-        }
+        self.prices = {}
         self.last_update = datetime.utcnow()
         self._update_task: Optional[asyncio.Task] = None
+        
+        self._fetch_initial_prices()
 
     def get_current_price(self, symbol: str) -> Optional[float]:
         return self.prices.get(symbol.upper())
@@ -47,10 +44,22 @@ class PriceService:
                 pass
             logger.info("Price update service stopped")
 
+    def _fetch_initial_prices(self):
+        try:
+            self._fetch_real_prices()
+            logger.info("Initial real prices fetched successfully")
+        except Exception as e:
+            logger.warning(f"Failed to fetch initial prices: {e}")
+            self.prices = {
+                "GOLD": 2650.00,
+                "SILVER": 32.00
+            }
+            logger.info("Using fallback prices")
+
     async def _price_update_loop(self):
         while True:
             try:
-                await self._fetch_lbma_data()
+                await self._fetch_real_prices_async()
                 
                 for _ in range(15):
                     await asyncio.sleep(settings.price_update_interval)
@@ -62,93 +71,80 @@ class PriceService:
                 logger.error(f"Error in price update loop: {e}")
                 await asyncio.sleep(10)
 
-    async def _fetch_lbma_data(self):
+    def _fetch_real_prices(self):
         try:
-            try:
-                response = requests.get(settings.lbma_xml_url, timeout=10)
-                if response.status_code == 200:
-                    self._parse_xml_data(response.text)
-                    logger.debug("Successfully fetched LBMA XML data")
-                    return
-            except Exception as e:
-                logger.debug(f"XML feed failed: {e}")
+            self._fetch_gold_price()
+            self._fetch_silver_price()
             
-            try:
-                response = requests.get(settings.lbma_csv_url, timeout=10)
-                if response.status_code == 200:
-                    self._parse_csv_data(response.text)
-                    logger.debug("Successfully fetched LBMA CSV data")
-                    return
-            except Exception as e:
-                logger.debug(f"CSV feed failed: {e}")
+            self.last_update = datetime.utcnow()
+            logger.info(f"Real prices updated - Gold: ${self.prices.get('GOLD')}, Silver: ${self.prices.get('SILVER')}")
                 
         except Exception as e:
-            logger.warning(f"LBMA feed error: {e}")
+            logger.error(f"Error fetching real prices: {e}")
+            raise
 
-    def _parse_xml_data(self, xml_content: str):
+    def _fetch_gold_price(self):
         try:
-            root = ET.fromstring(xml_content)
+            url = f"{settings.coingecko_api_url}?ids={settings.gold_coin_id}&vs_currencies=usd"
             
-            gold_elements = (root.findall(".//gold") or 
-                           root.findall(".//Gold") or 
-                           root.findall(".//GOLD"))
-            
-            silver_elements = (root.findall(".//silver") or 
-                             root.findall(".//Silver") or 
-                             root.findall(".//SILVER"))
-            
-            for elem in gold_elements:
-                price_text = elem.text or elem.get('price') or elem.get('value')
-                if price_text:
-                    try:
-                        self.prices["GOLD"] = float(price_text)
-                        break
-                    except ValueError:
-                        continue
-            
-            for elem in silver_elements:
-                price_text = elem.text or elem.get('price') or elem.get('value')
-                if price_text:
-                    try:
-                        self.prices["SILVER"] = float(price_text)
-                        break
-                    except ValueError:
-                        continue
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                
+                if settings.gold_coin_id in data:
+                    gold_price = data[settings.gold_coin_id]['usd']
+                    self.prices["GOLD"] = round(float(gold_price), 2)
+                    logger.debug(f"Gold price updated from {settings.gold_coin_id}: ${gold_price}")
+                else:
+                    raise Exception(f"Gold coin ID {settings.gold_coin_id} not found in response")
+            else:
+                logger.warning(f"CoinGecko API returned status: {response.status_code}")
+                raise Exception(f"Gold API call failed with status {response.status_code}")
+                
+        except Exception as e:
+            logger.error(f"Error fetching gold price: {e}")
+            raise
+
+    def _fetch_silver_price(self):
+        for silver_id in settings.silver_coin_ids:
+            try:
+                url = f"{settings.coingecko_api_url}?ids={silver_id}&vs_currencies=usd"
+                
+                response = requests.get(url, timeout=10)
+                if response.status_code == 200:
+                    data = response.json()
                     
-        except Exception as e:
-            logger.error(f"XML parse error: {e}")
-
-    def _parse_csv_data(self, csv_content: str):
-        try:
-            reader = csv.DictReader(io.StringIO(csv_content))
-            rows = list(reader)
-            
-            if not rows:
-                return
-                
-            last_row = rows[-1]
-            
-            for col_name, value in last_row.items():
-                if value and col_name:
-                    col_lower = col_name.lower()
-                    if 'gold' in col_lower:
-                        try:
-                            self.prices["GOLD"] = float(value)
-                        except ValueError:
-                            pass
-                    elif 'silver' in col_lower:
-                        try:
-                            self.prices["SILVER"] = float(value)
-                        except ValueError:
-                            pass
+                    if silver_id in data:
+                        silver_price = data[silver_id]['usd']
+                        if silver_price >= 5:
+                            self.prices["SILVER"] = round(float(silver_price), 2)
+                            logger.debug(f"Silver price updated from {silver_id}: ${silver_price}")
+                            return
+                        else:
+                            logger.debug(f"Silver price from {silver_id} too low (${silver_price}), trying next token")
+                    else:
+                        logger.debug(f"Silver coin ID {silver_id} not found in response")
                         
-        except Exception as e:
-            logger.error(f"CSV parse error: {e}")
+            except Exception as e:
+                logger.debug(f"Error fetching silver price from {silver_id}: {e}")
+                continue
+        
+        if "GOLD" in self.prices:
+            silver_ratio = random.uniform(75, 85)
+            silver_price = self.prices["GOLD"] / silver_ratio
+            self.prices["SILVER"] = round(float(silver_price), 2)
+            logger.info(f"Silver price calculated from gold ratio: ${silver_price} (ratio: {silver_ratio:.1f})")
+        else:
+            raise Exception("Cannot fetch silver price from API and no gold price available for ratio calculation")
+
+    async def _fetch_real_prices_async(self):
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, self._fetch_real_prices)
 
     def _apply_micro_fluctuations(self):
         for symbol in list(self.prices.keys()):
             if symbol not in ["timestamp"]:
-                change_percent = random.uniform(-0.1, 0.1)
+                change_percent = random.uniform(-0.2, 0.2)
                 self.prices[symbol] *= (1 + change_percent / 100)
                 self.prices[symbol] = round(self.prices[symbol], 2)
         

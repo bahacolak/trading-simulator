@@ -13,9 +13,12 @@ class Settings(BaseSettings):
     
     backend_cors_origins: list[str] = ["http://localhost:3000", "http://127.0.0.1:3000"]
     
-    lbma_xml_url: str = "https://www.lbma.org.uk/prices"
-    lbma_csv_url: str = "https://www.lbma.org.uk/downloads/gold-price.csv"
+    # free, no key required, might be in secrets
+    coingecko_api_url: str = "https://api.coingecko.com/api/v3/simple/price"
+    gold_coin_id: str = "pax-gold"
+    silver_coin_ids: list[str] = ["kinesis-silver", "silver-token", "gram-silver"]
     price_update_interval: int = 2
+    real_price_update_interval: int = 30
     
     class Config:
         env_file = ".env"
