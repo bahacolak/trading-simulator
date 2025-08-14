@@ -2,16 +2,9 @@
 
 Professional altın/gümüş trading simülatörü. FastAPI backend + React frontend + MySQL.
 
-## 🚀 Docker ile Hızlı Başlangıç (Önerilen)
-
 ### Tüm servisleri başlat:
 ```bash
 docker-compose up --build
-```
-
-### Background'da çalıştır:
-```bash
-docker-compose up -d --build
 ```
 
 ### Logları takip et:
